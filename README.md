@@ -88,11 +88,29 @@ The server uses SQLite for data persistence:
 
 - `PORT` - Server port (default: 3002)
 - `NODE_ENV` - Environment (development/production)
-- `FRONTEND_URL` - Frontend URL for CORS (default: http://localhost:3001)
+- `FRONTEND_URL` - Single frontend URL for CORS (e.g. `https://mig-frontend.vercel.app`). Used when `ALLOWED_ORIGINS` is not set.
+- `ALLOWED_ORIGINS` - Optional comma-separated list of origins to allow for CORS/socket connections (e.g. `https://mig-frontend.vercel.app,http://localhost:3001`). If set, it takes precedence over `FRONTEND_URL`.
+- `JWT_SECRET` - Secret used to sign JWT tokens (override for production)
+- `ADMIN_PASSWORD` - Password protecting simple admin endpoints (override for production)
+
+Note: By default the server includes `https://mig-frontend.vercel.app` in the fallback list so the Vercel-deployed frontend will be allowed even if you don't set these variables. For production you should explicitly set `ALLOWED_ORIGINS` or `FRONTEND_URL` and provide secure `JWT_SECRET` and `ADMIN_PASSWORD` values.
 
 ## Deployment
 
 The server is configured for deployment on Railway, Heroku, or similar platforms.
+
+If you're deploying the frontend to Vercel (for example at `https://mig-frontend.vercel.app`), make sure the backend allows that origin:
+
+- Option A (recommended): Set `ALLOWED_ORIGINS` in your backend environment variables to include `https://mig-frontend.vercel.app` (can be a comma-separated list).
+- Option B: Set `FRONTEND_URL=https://mig-frontend.vercel.app`.
+
+Example (environment variables):
+
+ALLOWED_ORIGINS=https://mig-frontend.vercel.app,http://localhost:3001
+JWT_SECRET=<your-secret>
+ADMIN_PASSWORD=<secure-password>
+
+See `.env.example` for a starter template.
 
 ## License
 

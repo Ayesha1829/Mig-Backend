@@ -21,21 +21,30 @@ const { handleDisconnect } = require('./disconnectHandlers');
 
 const app = express();
 const server = http.createServer(app);
-// Dynamic CORS origins based on environment
-const getCorsOrigins = () => {
-  if (process.env.NODE_ENV === 'production') {
-    return process.env.FRONTEND_URL || process.env.PRODUCTION_FRONTEND_URL || "http://195.35.2.209:3002";
+// Parse CORS origins from environment variables.
+// Supports ALLOWED_ORIGINS (comma separated) or single FRONTEND_URL / PRODUCTION_FRONTEND_URL.
+// If none provided, fall back to a sensible default list (including the Vercel frontend URL).
+const parseCorsOrigins = () => {
+  const env = process.env.ALLOWED_ORIGINS || process.env.FRONTEND_URL || process.env.PRODUCTION_FRONTEND_URL;
+  if (!env) {
+    return [
+      "http://localhost:3001",
+      "http://195.35.2.209:3001",
+      "http://195.35.2.209:3002",
+      "https://mig-frontend.vercel.app"
+    ];
   }
-  return [
-    "http://localhost:3001", 
-    "http://195.35.2.209:3001",
-    "http://195.35.2.209:3002"
-  ];
+
+  // Allow comma-separated lists in ALLOWED_ORIGINS
+  const arr = env.split(',').map(s => s.trim()).filter(Boolean);
+  return arr.length === 1 ? arr[0] : arr;
 };
+
+const corsOrigins = parseCorsOrigins();
 
 const io = socketIo(server, {
   cors: {
-    origin: getCorsOrigins(),
+    origin: corsOrigins,
     methods: ["GET", "POST"],
     credentials: true
   }
@@ -49,7 +58,7 @@ console.log('NODE_ENV:', process.env.NODE_ENV);
 console.log('PORT:', PORT);
 console.log('FRONTEND_URL:', process.env.FRONTEND_URL);
 console.log('PRODUCTION_FRONTEND_URL:', process.env.PRODUCTION_FRONTEND_URL);
-console.log('CORS_ORIGINS:', getCorsOrigins());
+console.log('CORS_ORIGINS:', corsOrigins);
 console.log('========================');
 
 // Initialize database
@@ -57,7 +66,7 @@ initializeDatabase().catch(console.error);
 
 // Middleware
 app.use(cors({
-  origin: getCorsOrigins(),
+  origin: corsOrigins,
   credentials: true
 }));
 app.use(express.json());
