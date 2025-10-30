@@ -1,0 +1,38 @@
+{
+  "name": "migoyugo-server",
+  "version": "1.0.0",
+  "description": "Migoyugo game backend server",
+  "main": "index_new.js",
+  "scripts": {
+    "start": "node index_new.js",
+    "dev": "nodemon index_new.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "node-fetch": "^2.7.0",
+    "socket.io": "^4.7.2",
+    "sqlite3": "^5.1.7",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": "22.x",
+    "npm": "9.x"
+  },
+  "keywords": [
+    "migoyugo",
+    "board-game",
+    "nodejs",
+    "socket.io",
+    "express"
+  ],
+  "author": "",
+  "license": "MIT"
+}
