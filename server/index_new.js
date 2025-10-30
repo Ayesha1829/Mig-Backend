@@ -26,25 +26,30 @@ const server = http.createServer(app);
 // If none provided, fall back to a sensible default list (including the Vercel frontend URL).
 const parseCorsOrigins = () => {
   const env = process.env.ALLOWED_ORIGINS || process.env.FRONTEND_URL || process.env.PRODUCTION_FRONTEND_URL;
-  if (!env) {
-    return [
-      "http://localhost:3001",
-      "http://195.35.2.209:3001",
-      "http://195.35.2.209:3002",
-      "https://mig-frontend.vercel.app"
-    ];
-  }
+  const defaults = [
+    "http://localhost:3001",
+    "http://195.35.2.209:3001",
+    "http://195.35.2.209:3002",
+    "https://mig-frontend.vercel.app"
+  ];
+  if (!env) return defaults;
 
   // Allow comma-separated lists in ALLOWED_ORIGINS
   const arr = env.split(',').map(s => s.trim()).filter(Boolean);
-  return arr.length === 1 ? arr[0] : arr;
+  return arr.length ? arr : defaults;
 };
 
-const corsOrigins = parseCorsOrigins();
+const allowedOrigins = parseCorsOrigins().map(o => o.replace(/\/$/, '')); // normalize (no trailing slash)
 
 const io = socketIo(server, {
   cors: {
-    origin: corsOrigins,
+    origin: (origin, callback) => {
+      // allow non-browser clients or same-origin requests without origin
+      if (!origin) return callback(null, true);
+      const normalized = origin.replace(/\/$/, '');
+      if (allowedOrigins.includes(normalized)) return callback(null, true);
+      callback(new Error('Not allowed by CORS'));
+    },
     methods: ["GET", "POST"],
     credentials: true
   }
@@ -58,7 +63,7 @@ console.log('NODE_ENV:', process.env.NODE_ENV);
 console.log('PORT:', PORT);
 console.log('FRONTEND_URL:', process.env.FRONTEND_URL);
 console.log('PRODUCTION_FRONTEND_URL:', process.env.PRODUCTION_FRONTEND_URL);
-console.log('CORS_ORIGINS:', corsOrigins);
+console.log('CORS_ORIGINS:', allowedOrigins);
 console.log('========================');
 
 // Initialize database
@@ -66,7 +71,13 @@ initializeDatabase().catch(console.error);
 
 // Middleware
 app.use(cors({
-  origin: corsOrigins,
+  origin: (origin, callback) => {
+    // allow non-browser clients (curl, Postman) or requests without origin
+    if (!origin) return callback(null, true);
+    const normalized = origin.replace(/\/$/, '');
+    if (allowedOrigins.includes(normalized)) return callback(null, true);
+    callback(new Error('Not allowed by CORS'));
+  },
   credentials: true
 }));
 app.use(express.json());
