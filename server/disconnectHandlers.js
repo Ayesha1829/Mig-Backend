@@ -39,6 +39,11 @@ function handleDisconnect(socket, waitingPlayers, rooms, games, io) {
         const disconnectedPlayerColor = game.players.white.id === socket.id ? 'white' : 'black';
         const winner = disconnectedPlayerColor === 'white' ? 'black' : 'white';
         
+        // Track disconnect time for this player (in case of quick reconnect before game ends)
+        if (game.gameStatus === 'active') {
+          game.playerDisconnectTime = Date.now();
+        }
+        
         // Stop the game timer
         stopServerTimer(gameId, games);
         

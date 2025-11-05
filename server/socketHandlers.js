@@ -109,9 +109,21 @@ function handleMakeMove(socket, games, io) {
     if (!game || game.gameStatus !== 'active') return;
     
     const playerColor = game.players.white.id === socket.id ? 'white' : 'black';
-    if (game.currentPlayer !== playerColor) return;
+    if (game.currentPlayer !== playerColor) {
+      socket.emit('moveError', { message: 'Not your turn', gameId });
+      return;
+    }
     
-    if (!isValidMove(game.board, row, col, playerColor)) return;
+    if (!isValidMove(game.board, row, col, playerColor)) {
+      // Emit error to the player who made the invalid move
+      socket.emit('moveError', { 
+        message: 'Illegal move. You may not create a line longer than 4 of your own color',
+        row,
+        col,
+        gameId
+      });
+      return;
+    }
     
     // Place the migo
     game.board[row][col] = { color: playerColor, isYugo: false };
@@ -164,8 +176,8 @@ function handleMakeMove(socket, games, io) {
     if (gameOver) {
       stopServerTimer(gameId, games);
     } else if (game.timerSettings.timerEnabled) {
-      // Restart timer for the new current player
-      startServerTimer(gameId, games, io);
+      // Restart timer for the new current player (not a reconnection)
+      startServerTimer(gameId, games, io, false);
     }
     
     // Broadcast move to both players
@@ -187,6 +199,16 @@ function handleMakeMove(socket, games, io) {
     };
     
     io.to(gameId).emit('moveUpdate', moveData);
+    
+    // Immediately emit timerUpdate after moveUpdate to ensure sync
+    // This helps clients catch up if they missed any timerUpdate events
+    if (game.timerSettings.timerEnabled && !gameOver) {
+      io.to(gameId).emit('timerUpdate', {
+        timers: { ...game.timers },
+        activeTimer: game.currentPlayer,
+        timestamp: Date.now()
+      });
+    }
   };
 }
 
@@ -201,18 +223,31 @@ function handleCancelMatchmaking(socket, waitingPlayers) {
 }
 
 // Timer sync handler
-function handleRequestTimerSync(socket, games) {
+function handleRequestTimerSync(socket, games, io) {
   return ({ gameId }) => {
     const game = games.get(gameId);
     if (!game) return;
     
     console.log(`Timer sync requested for game ${gameId}`);
     
+    // If timer is not running, restart it (this handles reconnection case)
+    if (game.timerSettings.timerEnabled && !game.timerInterval) {
+      startServerTimer(gameId, games, io, true); // true = reconnection
+    }
+    
     // Send current timer state with timestamp
+    const now = Date.now();
     socket.emit('timerSync', {
-      timers: game.timers,
+      timers: { ...game.timers },
       activeTimer: game.currentPlayer,
-      timestamp: Date.now()
+      timestamp: now
+    });
+    
+    // Also send timerUpdate immediately to ensure sync
+    socket.emit('timerUpdate', {
+      timers: { ...game.timers },
+      activeTimer: game.currentPlayer,
+      timestamp: now
     });
   };
 }

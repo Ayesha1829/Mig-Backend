@@ -329,7 +329,7 @@ io.on('connection', (socket) => {
   socket.on('findMatch', handleFindMatch(socket, playerName, userId, isGuest, waitingPlayers, games, io));
   socket.on('makeMove', handleMakeMove(socket, games, io));
   socket.on('cancelMatchmaking', handleCancelMatchmaking(socket, waitingPlayers));
-  socket.on('requestTimerSync', handleRequestTimerSync(socket, games));
+  socket.on('requestTimerSync', handleRequestTimerSync(socket, games, io));
   socket.on('resign', handleResign(socket, games, io));
   
   // Draw handlers
