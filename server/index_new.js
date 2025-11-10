@@ -13,7 +13,7 @@ const { initializeDatabase, createUser, getUserByEmail, getUserByUsername, verif
 const { generateToken, authenticateToken } = require('./auth');
 
 // Import game modules
-const { handleFindMatch, handleMakeMove, handleCancelMatchmaking, handleRequestTimerSync, handleResign } = require('./socketHandlers');
+const { handleFindMatch, handleMakeMove, handleCancelMatchmaking, handleRequestTimerSync, handleResetGame, handleResign } = require('./socketHandlers');
 const { handleDrawOffer, handleDrawAccept, handleDrawDecline } = require('./drawHandlers');
 const { handleCreateRoom, handleJoinRoom, handleStartRoomGame, handleLeaveRoom } = require('./roomHandlers');
 const { handleTestConnection, handleRequestRematch, handleRespondToRematch } = require('./testAndRematchHandlers');
@@ -330,6 +330,7 @@ io.on('connection', (socket) => {
   socket.on('makeMove', handleMakeMove(socket, games, io));
   socket.on('cancelMatchmaking', handleCancelMatchmaking(socket, waitingPlayers));
   socket.on('requestTimerSync', handleRequestTimerSync(socket, games, io));
+  socket.on('resetGame', handleResetGame(socket, games, io));
   socket.on('resign', handleResign(socket, games, io));
   
   // Draw handlers

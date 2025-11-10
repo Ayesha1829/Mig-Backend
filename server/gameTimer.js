@@ -42,17 +42,6 @@ function startServerTimer(gameId, games, io, isReconnection = false) {
         timestamp: now
       });
     }
-  } else if (game.lastMoveTime && !isReconnection) {
-    // On normal turn switch, account for small gap between clearing interval and restarting
-    // This is typically < 1 second, but we should still account for it
-    const elapsedSeconds = Math.floor((now - game.lastMoveTime) / 1000);
-    if (elapsedSeconds > 0 && elapsedSeconds <= 2) { // Only small gaps (0-2 seconds)
-      // The previous player's timer was running, so we need to know who that was
-      // Since we just switched, previous player is the opposite of current
-      const previousPlayer = game.currentPlayer === 'white' ? 'black' : 'white';
-      game.timers[previousPlayer] = Math.max(0, game.timers[previousPlayer] - elapsedSeconds);
-      console.log(`Adjusted timer for ${previousPlayer} by ${elapsedSeconds} seconds for gap between timer restart`);
-    }
   }
   
   game.timerInterval = setInterval(() => {
@@ -63,6 +52,7 @@ function startServerTimer(gameId, games, io, isReconnection = false) {
     
     const currentPlayer = game.currentPlayer;
     game.timers[currentPlayer] -= 1;
+    game.lastMoveTime = Date.now();
     
     // Broadcast timer update to all players
     // Use volatile emit to prevent buffering in deployment

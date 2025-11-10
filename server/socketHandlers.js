@@ -252,6 +252,36 @@ function handleRequestTimerSync(socket, games, io) {
   };
 }
 
+// Reset game handler
+function handleResetGame(socket, games, io) {
+  return ({ gameId, reason = 'playerReset' }) => {
+    const game = games.get(gameId);
+    if (!game) return;
+
+    const isWhite = game.players.white.id === socket.id;
+    const isBlack = game.players.black.id === socket.id;
+    if (!isWhite && !isBlack) {
+      socket.emit('gameError', { message: 'Cannot reset a game you are not part of', gameId });
+      return;
+    }
+
+    const requestedBy = isWhite ? 'white' : 'black';
+
+    stopServerTimer(gameId, games);
+    game.gameStatus = 'finished';
+
+    io.to(gameId).emit('gameReset', {
+      gameId,
+      reason,
+      requestedBy,
+      timers: { ...game.timers }
+    });
+
+    io.in(gameId).socketsLeave(gameId);
+    games.delete(gameId);
+  };
+}
+
 // Resign handler
 function handleResign(socket, games, io) {
   return ({ gameId }) => {
@@ -276,5 +306,6 @@ module.exports = {
   handleMakeMove,
   handleCancelMatchmaking,
   handleRequestTimerSync,
+  handleResetGame,
   handleResign
 };
