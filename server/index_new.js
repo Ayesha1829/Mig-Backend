@@ -308,14 +308,14 @@ io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
   
   // Get user info from auth data
-  const authData = socket.handshake.auth;
+  const authData = socket.handshake.auth || {};
+  const rawIsGuest = authData.isGuest;
+  let isGuest = rawIsGuest === true || rawIsGuest === 'true' || rawIsGuest === 1 || rawIsGuest === '1';
   let playerName = '';
   let userId = null;
-  let isGuest = false;  // ADD THIS LINE
   
-  if (authData.isGuest) {
+  if (isGuest) {
     playerName = `Guest${Math.floor(Math.random() * 9000) + 1000}`;
-    isGuest = true;  // ADD THIS LINE
   } else if (authData.user && authData.user.username) {
     playerName = authData.user.username;
     userId = authData.user.id;
@@ -323,7 +323,10 @@ io.on('connection', (socket) => {
     playerName = `Player${Math.floor(Math.random() * 9000) + 1000}`;
   }
   
-  console.log(`${playerName} connected ${authData.isGuest ? '(guest)' : '(authenticated)'}`);
+  console.log(`${playerName} connected ${isGuest ? '(guest)' : '(authenticated)'}`, {
+    rawIsGuest,
+    hasUser: !!authData.user
+  });
 
   // Set up all socket event handlers
   socket.on('findMatch', handleFindMatch(socket, playerName, userId, isGuest, waitingPlayers, games, io));
