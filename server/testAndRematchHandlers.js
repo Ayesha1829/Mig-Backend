@@ -3,6 +3,23 @@ const { v4: uuidv4 } = require('uuid');
 const { createEmptyBoard } = require('./gameLogic');
 const { startServerTimer } = require('./gameTimer');
 
+function resolvePlayerSocket(io, player) {
+  if (!player) return null;
+
+  const liveSocket = io.sockets.sockets.get(player.id);
+  if (liveSocket) {
+    player.id = liveSocket.id;
+    player.socket = liveSocket;
+    return liveSocket;
+  }
+
+  if (player.socket && player.socket.connected) {
+    return player.socket;
+  }
+
+  return null;
+}
+
 // Test connection handler
 function handleTestConnection(socket, games, io) {
   return (data) => {
@@ -74,6 +91,11 @@ function handleRequestRematch(socket, games, io) {
         status: g.gameStatus,
         players: { white: g.players.white.id, black: g.players.black.id }
       })));
+      socket.emit('rematchRequestFailed', {
+        gameId,
+        reason: 'not_found',
+        message: 'That game is no longer available for a rematch.'
+      });
       return;
     }
     
@@ -85,23 +107,37 @@ function handleRequestRematch(socket, games, io) {
     
     if (game.gameStatus !== 'finished') {
       console.log(`ERROR: Game ${gameId} is not finished (status: ${game.gameStatus})`);
+      socket.emit('rematchRequestFailed', {
+        gameId,
+        reason: 'not_finished',
+        message: 'The game is still marked active; rematch is unavailable.'
+      });
       return;
     }
     
     const playerColor = game.players.white.id === socket.id ? 'white' : 'black';
     const opponentColor = playerColor === 'white' ? 'black' : 'white';
-    const opponentSocketId = game.players[opponentColor].id;
+    const opponentPlayer = game.players[opponentColor];
+    const opponentSocketId = opponentPlayer?.id;
     
     console.log(`Player colors: ${playerColor} (${socket.id}) vs ${opponentColor} (${opponentSocketId})`);
     
+    game.players[playerColor].id = socket.id;
+    game.players[playerColor].socket = socket;
+
     // Check if opponent socket exists
-    const opponentSocket = io.sockets.sockets.get(opponentSocketId);
+    const opponentSocket = resolvePlayerSocket(io, opponentPlayer);
     if (opponentSocket) {
       console.log(`✓ Opponent socket found and connected: ${opponentSocket.connected}`);
       console.log(`Opponent socket rooms:`, Array.from(opponentSocket.rooms));
     } else {
       console.log(`✗ ERROR: Opponent socket ${opponentSocketId} not found!`);
       console.log(`Available sockets:`, Array.from(io.sockets.sockets.keys()));
+      socket.emit('rematchRequestFailed', {
+        gameId,
+        reason: 'opponent_offline',
+        message: 'Your opponent is no longer connected.'
+      });
       return;
     }
     
@@ -121,7 +157,7 @@ function handleRequestRematch(socket, games, io) {
     };
     console.log(`Rematch data:`, rematchData);
     
-    io.to(opponentSocketId).emit('rematchRequested', rematchData);
+    opponentSocket.emit('rematchRequested', rematchData);
     console.log(`✓ Emitted rematchRequested event to ${opponentSocketId}`);
     
     // Notify requester that request was sent
@@ -136,13 +172,47 @@ function handleRespondToRematch(socket, games, io) {
   return ({ gameId, accept }) => {
     console.log(`Rematch response received from ${socket.id} for game ${gameId}: ${accept ? 'accepted' : 'declined'}`);
     const game = games.get(gameId);
-    if (!game || game.gameStatus !== 'finished') return;
+    if (!game || game.gameStatus !== 'finished') {
+      socket.emit('rematchRequestFailed', {
+        gameId,
+        reason: 'not_available',
+        message: 'Rematch is no longer available for that game.'
+      });
+      return;
+    }
     
     const playerColor = game.players.white.id === socket.id ? 'white' : 'black';
     const opponentColor = playerColor === 'white' ? 'black' : 'white';
-    const opponentSocketId = game.players[opponentColor].id;
+    const requesterPlayer = game.players[opponentColor];
+    const responderPlayer = game.players[playerColor];
+
+    responderPlayer.id = socket.id;
+    responderPlayer.socket = socket;
+
+    const opponentSocket = resolvePlayerSocket(io, requesterPlayer);
+    const responderSocket = resolvePlayerSocket(io, responderPlayer) || socket;
     
     if (accept) {
+      if (!game.rematchRequests || !game.rematchRequests[opponentColor]) {
+        console.log(`✗ No pending rematch request from ${opponentColor} for game ${gameId}`);
+        socket.emit('rematchRequestFailed', {
+          gameId,
+          reason: 'no_request',
+          message: 'No rematch request is waiting for your response.'
+        });
+        return;
+      }
+
+      if (!opponentSocket) {
+        console.log(`✗ Unable to accept rematch - requester socket missing for game ${gameId}`);
+        socket.emit('rematchRequestFailed', {
+          gameId,
+          reason: 'opponent_offline',
+          message: 'Opponent is no longer connected.'
+        });
+        return;
+      }
+
       // Both players agreed to rematch - create new game
       const newGameId = uuidv4();
       
@@ -157,8 +227,18 @@ function handleRespondToRematch(socket, games, io) {
       const newGameState = {
         id: newGameId,
         players: {
-          white: game.players[opponentColor], // Swap colors
-          black: game.players[playerColor]
+          white: {
+            id: opponentSocket.id,
+            name: requesterPlayer.name,
+            userId: requesterPlayer.userId,
+            socket: opponentSocket
+          },
+          black: {
+            id: responderSocket.id,
+            name: responderPlayer.name,
+            userId: responderPlayer.userId,
+            socket: responderSocket
+          }
         },
         board: createEmptyBoard(),
         currentPlayer: 'white',
@@ -176,21 +256,20 @@ function handleRespondToRematch(socket, games, io) {
       };
       
       games.set(newGameId, newGameState);
-      
-      // Remove old game
+      delete game.rematchRequests;
       games.delete(gameId);
-      
+
       // Update socket rooms
-      socket.leave(gameId);
-      io.sockets.sockets.get(opponentSocketId)?.leave(gameId);
-      socket.join(newGameId);
-      io.sockets.sockets.get(opponentSocketId)?.join(newGameId);
+      opponentSocket.leave(gameId);
+      responderSocket.leave(gameId);
+      opponentSocket.join(newGameId);
+      responderSocket.join(newGameId);
       
       // Notify both players about new game
       const whitePlayerName = newGameState.players.white.name;
       const blackPlayerName = newGameState.players.black.name;
       
-      io.to(newGameState.players.white.id).emit('rematchAccepted', {
+      opponentSocket.emit('rematchAccepted', {
         gameId: newGameId,
         playerColor: 'white',
         opponentName: blackPlayerName,
@@ -206,7 +285,7 @@ function handleRespondToRematch(socket, games, io) {
         timers: newGameState.timers
       });
       
-      io.to(newGameState.players.black.id).emit('rematchAccepted', {
+      responderSocket.emit('rematchAccepted', {
         gameId: newGameId,
         playerColor: 'black',
         opponentName: whitePlayerName,
@@ -229,11 +308,14 @@ function handleRespondToRematch(socket, games, io) {
       
     } else {
       // Rematch declined
-      io.to(opponentSocketId).emit('rematchDeclined', { gameId });
+      if (opponentSocket) {
+        opponentSocket.emit('rematchDeclined', { gameId });
+      }
       
       // Clean up rematch requests
       if (game.rematchRequests) {
         delete game.rematchRequests[opponentColor];
+        delete game.rematchRequests[playerColor];
       }
     }
   };
