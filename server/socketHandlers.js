@@ -265,20 +265,27 @@ function handleResetGame(socket, games, io) {
       return;
     }
 
-    const requestedBy = isWhite ? 'white' : 'black';
+    const resetBy = isWhite ? 'white' : 'black';
+    const resetByName = game.players[resetBy]?.name || 'Opponent';
+    const winner = resetBy === 'white' ? 'black' : 'white';
+    const winnerName = game.players[winner]?.name || 'Opponent';
 
     stopServerTimer(gameId, games);
     game.gameStatus = 'finished';
+    if (game.rematchRequests) {
+      delete game.rematchRequests.white;
+      delete game.rematchRequests.black;
+    }
 
-    io.to(gameId).emit('gameReset', {
+    io.to(gameId).emit('gameEnd', {
       gameId,
-      reason,
-      requestedBy,
+      winner,
+      winnerName,
+      reason: 'reset',
+      resetBy,
+      resetByName,
       timers: { ...game.timers }
     });
-
-    io.in(gameId).socketsLeave(gameId);
-    games.delete(gameId);
   };
 }
 
